@@ -1,0 +1,16 @@
+Major - Important
+- Add delta graphs
+- Seperate the is and ss into two subplots while viewing both at once
+- Add Reading of option line and adjust freq autoscale accordingly
+
+Minor - Important
+- Add select / deselect all s or i values to be "s" and "i"
+- Get better naming conventions for s and i values
+- Move the options to a .yaml or equivlaent file
+
+Major - UnImportant
+- update the subtitle to show current commands availible to the user dependent on cursor pos and view path
+
+Minor - UnImportant
+- Change the select all feature to be "a"
+- make the left arrow go back when on "Go Back"
