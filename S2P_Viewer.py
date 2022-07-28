@@ -1,8 +1,10 @@
+from math import inf
 from msvcrt import getch
 from os import path
 from easygui import fileopenbox
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
+from more_itertools import peekable
 from rich.align import Align
 from rich.console import Console
 from rich.layout import Layout
@@ -11,10 +13,11 @@ from rich.panel import Panel
 from rich.style import Style
 from rich.tree import Tree
 
-VERSION = "V0.1 [25 July 2022]"
-HELP_LINE = "L to load S2P, G to view graph, ←→ to interact with items in the tree, ↑↓ to move on tree"
+VERSION = "V0.2 [28 July 2022]"
+HELP_LINE = "L to load S2P, G to view graph, D to view graph with deltas, ←→ to interact with items in the tree, ↑↓ to move on tree"
 SELECTED_STYLE = Style(color="light_sky_blue1", bold=True )
 MARKER_SIZE = 2
+SPLIT_GRAPHS = True
 
 
 s2ps = []
@@ -96,11 +99,71 @@ def update_visuals() -> None:
       # Add to table
       tree.add(t, style= style)
 
-
   # Update the UI
   layout["s2p_tree"].update(Panel(tree, title="Loaded S2P Files", subtitle="Press 'L' to load a file"))
   # update the live
   # live.update()
+
+def get_data(gi):
+  # Grab the s2p
+  s2p = [x for x in s2ps if x.path == gi[0]][0]
+  # return the data
+  return s2p.get_sparam(gi[1])
+  
+def generate_graph(delta: bool):
+  # Display graph of all selected sparams
+    fig = plt.figure()
+    if delta or (SPLIT_GRAPHS and len([x for x in graph_items if "I" in x[1]]) > 0):
+      ax: Axes = fig.add_subplot(211)
+      de: Axes = fig.add_subplot(212)
+    else:
+      ax: Axes = fig.add_subplot(111)
+    # Graph all items
+    for gi in graph_items:
+      data = get_data(gi)
+      if "I" in gi[1] and SPLIT_GRAPHS:
+        de.scatter(data[0], data[1], label=gi[0] + " [" + gi[1] + "]", s=MARKER_SIZE)
+      else:
+        ax.scatter(data[0], data[1], label=gi[0] + " [" + gi[1] + "]", s=MARKER_SIZE)
+    
+    # Graph all deltas (if we are in that mode)
+    if delta:
+
+      for x in range(len(graph_items)):
+        for y in range(x + 1, len(graph_items)):
+          # Create iterators
+          xbd = list(zip(*get_data(graph_items[x])))
+          xit = peekable(xbd)
+          ybd = list(zip(*get_data(graph_items[y])))
+          yit = peekable(ybd)
+          # Some vars
+          data = ([], [])
+          # While loop
+          while not(xit.peek(None) == None and yit.peek(None) == None):
+            # If both are equal then add their delta
+            if xit.peek()[0] == yit.peek()[0]:
+              xd = next(xit)
+              yd = next(yit)
+              data[0].append(xd[0])
+              data[1].append(xd[1] - yd[1])\
+            # Otherwise get rid of the lower one
+            else:
+              if xit.peek()[0] < yit.peek()[0]:
+                next(xit)
+              else:
+                next(yit)
+          de.scatter(data[0], data[1], label="Δ " + graph_items[x][0] + " [" + graph_items[x][1] + "], " + graph_items[y][0] + " [" + graph_items[y][1] + "]", s=MARKER_SIZE)
+
+
+    # Show legend / labels
+    plt.xlabel("Frequency (MHz)")
+    plt.ylabel("Response (dB)")
+    ax.legend()
+    # Show delta stuff if it is enabled
+    if delta or (SPLIT_GRAPHS and len([x for x in graph_items if "I" in x[1]]) > 0):
+      de.legend()
+    # Show
+    plt.show()
 
 def parse_input(char: str) -> None:
   global cursor_pos, view_path, graph_items
@@ -123,21 +186,12 @@ def parse_input(char: str) -> None:
       update_visuals()
 
   elif char == 'g' or char == "G":
-    # Display graph of all selected sparams
-    fig = plt.figure()
-    ax: Axes = fig.add_subplot(111)
-    for s2p in s2ps:
-      # loop through all related graph items
-      for s in [x for x in graph_items if x[0] == s2p.path]:
-        # Grab data and add to plot
-        data = s2p.get_sparam(s[1])
-        ax.scatter(data[0], data[1], label=s2p.path + " [" + s[1] + "]", s=MARKER_SIZE)
-    # Show legend / labels
-    plt.xlabel("Frequency (MHz)")
-    plt.ylabel("Response (dB)")
-    ax.legend()
-    # Show
-    plt.show()
+    # Generate a grpah without deltas
+    generate_graph(False)
+
+  elif char == 'd' or char == 'D':
+    # Create a graph with deltas
+    generate_graph(True)
 
   elif char == chr(0):
     
