@@ -1,12 +1,13 @@
 Major - Important
-- Add delta graphs
-- Seperate the is and ss into two subplots while viewing both at once
-- Add Reading of option line and adjust freq autoscale accordingly
+- make it so if split graphs and delta graphs is enabled we split into 4 (rewrite all the graph  splititng code to make it work better)
 
 Minor - Important
+- Load folder
 - Add select / deselect all s or i values to be "s" and "i"
 - Get better naming conventions for s and i values
 - Move the options to a .yaml or equivlaent file
+- Add error messages for loading non s2p files aswell as loading two s2p files with differing parameter units
+- Add suport for default option line values
 
 Major - UnImportant
 - update the subtitle to show current commands availible to the user dependent on cursor pos and view path

@@ -1,0 +1,10 @@
+# Settings file for S2P_Viewer.py
+# Preset Values
+version: "V0.2.1 [28 July 2022]"
+
+plot-options:
+  split-by-data-type: True      # Split the plot into two seperate graphs, one for the real and one for complex
+  marker-size: 2
+control-options:
+  load-keybind: "L"
+  graph-keybind: "G"
