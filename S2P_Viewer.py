@@ -13,14 +13,21 @@ from rich.panel import Panel
 from rich.style import Style
 from rich.tree import Tree
 
-VERSION = "V0.2 [28 July 2022]"
+VERSION = "V0.2.1 [28 July 2022]"
 HELP_LINE = "L to load S2P, G to view graph, D to view graph with deltas, ←→ to interact with items in the tree, ↑↓ to move on tree"
 SELECTED_STYLE = Style(color="light_sky_blue1", bold=True )
 MARKER_SIZE = 2
 SPLIT_GRAPHS = True
+FREQ_UNITS = {"ghz": 1000000000, "mhz": 1000000, "khz": 1000, "hz": 1}
+FREQ_NAMES = {"ghz": "GHz", "mhz": "MHz", "khz": "kHz", "hz": "Hz"}
+PARAMETER_LABELS = {"db": "Magnitude (dB)", "ma": "Magnitude (Absolute)", "ri": "Real"}
+IMAGINARY_LABELS = {"db": "Angle (°)", "ma": "Angle (°)", "ri": "Imaginary"}
+PLOT_FREQ_UNITS = "mhz"
+PLOT_XLABEL = "Frequency (#)"
 
-
+# Loaded Data
 s2ps = []
+
 graph_items = []
 exit = False
 # GUI nav vars
@@ -33,6 +40,8 @@ class S2P:
 
   def __init__ (self):
     self.path = ""
+    self.freq_units = ""
+    self.parameter_units = ""
     self.freq = []
     # initialize the s_param array
     self.s_params = [[] for i in range(len(self.S_PARAMS))]
@@ -49,12 +58,19 @@ class S2P:
     while "#" not in lines[i]:
         i += 1
     # read the option line
+    options = lines[i].split()
+    init_freq_units = options[1].lower()
+    self.parameter_units = options[3].lower()
+    # Check if the file is an S file
+    if not options[2].lower() == "s":
+      # Ahh panic
+      quit()
     i += 1
     # read the s params
     while i < len(lines):
       values = lines[i].split()
-      # Convert to MHz form kHz
-      self.freq.append(float(values[0]) / 1000000)
+      # Convert to Hz then to wahtever we are using in the settings
+      self.freq.append(float(values[0]) * FREQ_UNITS[init_freq_units] / FREQ_UNITS[PLOT_FREQ_UNITS])
       for s in range(len(self.S_PARAMS)):
         self.s_params[s].append(float(values[s + 1]))
       i += 1
@@ -155,14 +171,18 @@ def generate_graph(delta: bool):
           de.scatter(data[0], data[1], label="Δ " + graph_items[x][0] + " [" + graph_items[x][1] + "], " + graph_items[y][0] + " [" + graph_items[y][1] + "]", s=MARKER_SIZE)
 
 
-    # Show legend / labels
-    plt.xlabel("Frequency (MHz)")
-    plt.ylabel("Response (dB)")
+    # Add stuff to ax
+    ax.set_xlabel(PLOT_XLABEL.replace("#", FREQ_NAMES[PLOT_FREQ_UNITS]))
+    ax.set_ylabel(PARAMETER_LABELS[s2ps[0].parameter_units])
     ax.legend()
-    # Show delta stuff if it is enabled
+
+    # Add delta stuff if it is enabled
     if delta or (SPLIT_GRAPHS and len([x for x in graph_items if "I" in x[1]]) > 0):
+      de.set_xlabel(PLOT_XLABEL.replace("#", FREQ_NAMES[PLOT_FREQ_UNITS]))
+      de.set_ylabel(PARAMETER_LABELS[s2ps[0].parameter_units])
       de.legend()
-    # Show
+
+    # Show plot
     plt.show()
 
 def parse_input(char: str) -> None:
@@ -264,7 +284,8 @@ layout.split_column(Layout(Panel(Align("S2P Viewer " + VERSION, align="center"),
 update_visuals()
 
 # Main Loop
-with Live(layout):
+with Live(layout, auto_refresh=False) as live:
   while not exit:
     # Wait for Input
     parse_input(chr(ord(getch())))
+    live.refresh()
