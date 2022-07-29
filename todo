@@ -1,13 +1,15 @@
 Major - Important
 - make it so if split graphs and delta graphs is enabled we split into 4 (rewrite all the graph  splititng code to make it work better)
-
-Minor - Important
 - Load folder
 - Add select / deselect all s or i values to be "s" and "i"
+- Convert command "objects" to a class
+
+Minor - Important
 - Get better naming conventions for s and i values
-- Move the options to a .yaml or equivlaent file
 - Add error messages for loading non s2p files aswell as loading two s2p files with differing parameter units
 - Add suport for default option line values
+- view filter
+- move styling options over to the yaml file
 
 Major - UnImportant
 - update the subtitle to show current commands availible to the user dependent on cursor pos and view path
@@ -15,3 +17,7 @@ Major - UnImportant
 Minor - UnImportant
 - Change the select all feature to be "a"
 - make the left arrow go back when on "Go Back"
+
+BUGSSSS
+- selected path isnt highlighted when initially loaded in if down arrow is pressed
+- loading two idential paths is allowed and breaks everything
