@@ -1,6 +1,5 @@
 Major - Important
 - make it so if split graphs and delta graphs is enabled we split into 4 (rewrite all the graph  splititng code to make it work better)
-- Load folder
 - Add select / deselect all s or i values to be "s" and "i"
 - Convert command "objects" to a class
 
@@ -19,5 +18,3 @@ Minor - UnImportant
 - make the left arrow go back when on "Go Back"
 
 BUGSSSS
-- selected path isnt highlighted when initially loaded in if down arrow is pressed
-- loading two idential paths is allowed and breaks everything

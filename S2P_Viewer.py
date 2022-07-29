@@ -80,20 +80,21 @@ view_path = -1
 def load_file() -> None:
   # Loads a file into the list of s2ps
   # Ask user for file
-  path = fileopenbox(title="Open a .s2p File", default="\\*.s2p")
+  paths = fileopenbox(title="Open a .s2p File", default="\\*.s2p", multiple=True)
   # Check if we got a valid file
-  if path == None:
+  if paths == None or len(paths) == 0:
     return
-  # Load s2p data
-  s2p = S2P()
-  s2p.load_s2p(path)
+  for path in paths:
+    # Load s2p data
+    s2p = S2P()
+    s2p.load_s2p(path)
 
-  # Check if we already have an s2p with the same name
-  if len([s for s in s2ps if s.path == s2p]) == 0:
-    # Add to list
-    s2ps.append(s2p)
-    # Update display
-    update_visuals()
+    # Check if we already have an s2p with the same name
+    if len([s for s in s2ps if s.path == s2p.path]) == 0:
+      # Add to list
+      s2ps.append(s2p)
+      # Update display
+      update_visuals()
 
 def generate_graph(delta: bool) -> None:
   # Display graph of all selected sparams
@@ -161,6 +162,8 @@ def cursor_up() -> None:
 
 def cursor_down() -> None:
   global cursor_pos, view_path
+  if len(s2ps) == 0:
+    return
   # Move Cursor Down
   if view_path == -1:
     cursor_pos = min(cursor_pos + 1, len(s2ps) - 1)
@@ -178,15 +181,10 @@ def add_graph_item() -> None:
   # redraw
   update_visuals()
 
-def add_all_path_items() -> None:
+def add_all_path_items(path: str) -> None:
   # Check that we actually have s2ps loaded
   if len(s2ps) == 0:
     return
-  # If we are in s2p tree add the path our cursor is selecting otherwise load the s2p we are looking into
-  if view_path == -1:
-    path = s2ps[cursor_pos].path
-  else:
-    path = s2ps[view_path].path
   # Add all items to the graph for the path provided
   for i in range(len(S2P.S_PARAMS)):
     if not (path, S2P.S_PARAMS[i]) in graph_items:
@@ -203,13 +201,13 @@ def remove_graph_item() -> None:
   # redraw
   update_visuals()
 
-def remove_all_path_items() -> None:
+def remove_all_path_items(path) -> None:
   global graph_items, view_path
   # Check that we actually have s2ps loaded
   if len(s2ps) == 0:
     return
   # Remove all items that match with the path provided
-  graph_items = [x for x in graph_items if not x[0] == s2ps[view_path].path]
+  graph_items = [x for x in graph_items if not x[0] == path]
   # redraw
   update_visuals()
 
@@ -237,13 +235,16 @@ COMMANDS = [
   ["graph-keybind", "to view a graph", ["common"], lambda: generate_graph(False)],
   ["delta-keybind", "to view a graph with deltas", ["common"], lambda: generate_graph(True)],
   ["cursorup-keybind", "to move cursor up", ["list"], cursor_up],
+  ["cursorup-keybind", "to move cursor up", ["list", "top_slot"], cursor_up],
   ["cursordown-keybind", "to move cursor down", ["list"], cursor_down],
-  ["negative-item", "to add all items to graph", ["list", "s2p_tree", "unselected"], add_all_path_items],
-  ["negative-item", "to remove all items from graph", ["list", "s2p_tree", "selected"], remove_all_path_items],
+  ["cursordown-keybind", "to move cursor down", ["list", "top_slot"], cursor_down],
+  ["negative-item", "to add all items to graph", ["list", "s2p_tree", "unselected"], lambda: add_all_path_items(s2ps[cursor_pos].path)],
+  ["negative-item", "to remove all items from graph", ["list", "s2p_tree", "selected"], lambda: remove_all_path_items(s2ps[cursor_pos].path)],
   ["negative-item", "to remove item from the graph", ["list", "param_tree", "selected"], remove_graph_item],
   ["negative-item", "to go back to tree view", ["list", "param_tree", "top_slot"], return_to_s2p_tree],
   ["positive-item", "to view path details", ["list", "s2p_tree"], view_path_details],
-  ["positive-item", "to add item to the graph", ["list", "param_tree", "unselected"], add_graph_item]
+  ["positive-item", "to add item to the graph", ["list", "param_tree", "unselected"], add_graph_item],
+  ["positive-item", "to go back to tree view", ["list", "param_tree", "top_slot"], return_to_s2p_tree]
   
 ]
 
@@ -322,6 +323,8 @@ def get_valid_commands() -> list:
   # If not in top slot and not in param tree then strictly sort only commands with top slot
   if view_path == -1 or cursor_pos != 0:
     commands = [x for x in COMMANDS if not "top_slot" in x[2]]
+  else:
+    commands = [x for x in COMMANDS if "top_slot" in x[2] or "common" in x[2]]
   # Filter by states
   return [x for x in commands if all(item in states for item in x[2])]
 
