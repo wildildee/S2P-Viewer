@@ -1,10 +1,15 @@
+from ast import Call
+from enum import Enum
 from math import inf
 from msvcrt import getch
 from os import path
+from typing import Callable
 from easygui import fileopenbox
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from more_itertools import peekable
+from numpy import ndarray
 from rich.align import Align
 from rich.console import Console
 from rich.layout import Layout
@@ -58,7 +63,7 @@ class S2P:
     while i < len(lines):
       values = lines[i].split()
       # Convert to Hz then to wahtever we are using in the settings
-      self.freq.append(float(values[0]) * FREQ_UNITS[init_freq_units] / FREQ_UNITS[settings["plot-options"]["freq-units"]])
+      self.freq.append(float(values[0]) * FREQ_UNITS[init_freq_units] / FREQ_UNITS[settings["plot_options"]["freq_units"]])
       for s in range(len(self.S_PARAMS)):
         self.s_params[s].append(float(values[s + 1]))
       i += 1
@@ -68,15 +73,131 @@ class S2P:
 
 # Loaded Data
 s2ps: list[S2P] = []
-
-graph_items = []
-exit = False
-# GUI nav vars
+graph_items: list[tuple[str, str]] = []
 cursor_pos = 0
 view_path = -1
+exit = False
 
+class Command:
+  
+  def __init__(self, keybind: str, description: str, include_tags: list[Enum], exclude_tags: list[Enum], function: Callable[... , None]):
+    self.keybind = keybind
+    self.description = description
+    self.include_tags = include_tags
+    self.exclude_tags = exclude_tags
+    self.function = function
+
+  class States(Enum):
+    # Enum for representing the states that the program could be in for the purpose of filtering commands
+    general_command = 1 # Command can be used anytime no mater what is highlighted
+    dependent_command = 2 # Command can only be used if something specific is highlighted
+    s2ps_loaded = 3
+    s2p_highlighted = 101
+    s2p_nopaths = 102
+    s2p_allpaths = 103
+    s2p_somepaths = 104
+    s2p_allspaths = 105
+    s2p_allipaths = 106
+    param_highlighted = 201
+    param_selected = 202
+    param_unselected = 203
+  
+  def __str__(self):
+    return settings["keybinds"][self.keybind].upper() + " " + self.description
+
+  @staticmethod
+  def get_current_states(base_state: Enum) -> list[Enum]:
+    global cursor_pos, graph_items, s2ps, view_path
+    # Add base state
+    states = [base_state]
+
+    # Check any s2ps are loaded
+    if len(s2ps) > 0:
+      states.append(Command.States.s2ps_loaded)
+
+    # Check if we have a s2p highlighted
+    if view_path == -1:
+      states.append(Command.States.s2p_highlighted)
+    # Check how many selected paths are for the s2p we are highlighting
+    num_of_selected_paths = len([x for x in graph_items if x[0] == s2ps[cursor_pos].path])
+    if Command.States.s2p_highlighted in states and num_of_selected_paths == 0:
+      # If 0 then we no paths
+      states.append(Command.States.s2p_nopaths)
+    elif Command.States.s2p_highlighted in states and num_of_selected_paths == len(S2P.S_PARAMS):
+      # If max then we have all paths
+      states.append(Command.States.s2p_allpaths)
+    elif Command.States.s2p_highlighted:
+      # Otherwise we have some pathes
+      states.append(Command.States.s2p_somepaths)
+    # Check if all s params are loaded
+    if Command.States.s2p_highlighted in states and len([x for x in graph_items if x[0] == s2ps[cursor_pos].path and "S" in x[1]]) == 4:
+      states.append(Command.States.s2p_allspaths)
+    # Check if all i params are loaded
+    if Command.States.s2p_highlighted in states and len([x for x in graph_items if x[0] == s2ps[cursor_pos].path and "I" in x[1]]) == 4:
+      states.append(Command.States.s2p_allipaths)
+    
+    # Check if we have a param highlighted
+    if view_path != -1 and cursor_pos > 0:
+      states.append(Command.States.param_highlighted)
+    # Check if the param that we have highlighted is selected
+    if Command.States.param_highlighted in states and (s2ps[view_path].path, S2P.S_PARAMS[cursor_pos - 1]) in graph_items:
+      states.append(Command.States.param_selected)
+    elif Command.States.param_highlighted in states:
+      states.append(Command.States.param_unselected)
+    
+    # Return the list
+    return states
+
+  def is_command_valid(self, base_state: Enum) -> bool:
+    # Get a list of all current states
+    states = Command.get_current_states(base_state)
+    # Check that the include tags are met
+    for tag in self.include_tags:
+      if not tag in states:
+        return False
+    # Check that none of the exclude tags are met
+    for tag in self.exclude_tags:
+      if tag in states:
+        return False
+    
+    # All checks passed, return true
+    return True
+  
+  def is_command_executable(self, key_press: str) -> bool:
+    # Check if the key pressed matches the keybind
+    if key_press != self.keybind:
+      return False
+    # Check that the command is valid
+    if not (self.is_command_valid(Command.States.general_command) or self.is_command_valid(Command.States.dependent_command)):
+      return False
+    
+    # All checks passed, return true
+    return True
+
+  def get_funciton(self) -> Callable[..., None]:
+    return self.function
 
 # COMMANDS
+commands: list[Command] = [
+  Command("load_keybind", "to load a file", [Command.States.general_command], [], lambda: load_file()),
+  Command("graph_keybind", "to view a graph", [Command.States.general_command],[], lambda: generate_graph(False)),
+  Command("delta_keybind", "to view a graph with deltas", [Command.States.general_command],[], lambda: generate_graph(True)),
+  Command("cursorup_keybind", "to move the cursor up", [Command.States.general_command], [], lambda: cursor_up()),
+  Command("cursordown_keybind", "to move the cursor down", [Command.States.general_command], [], lambda: cursor_down()),
+  Command("negative_item", "to select all items", [Command.States.s2ps_loaded, Command.States.dependent_command, Command.States.s2p_highlighted], [Command.States.s2p_allpaths], lambda: add_graph_item(s2ps[cursor_pos].path)),
+  Command("negative_item", "to unselect all items", [Command.States.dependent_command, Command.States.s2p_allpaths], [], lambda: remove_graph_item(s2ps[cursor_pos].path)),
+  Command("negative_item", "to unselect item", [Command.States.dependent_command, Command.States.param_selected], [], lambda: remove_graph_item(s2ps[view_path].path, S2P.S_PARAMS[cursor_pos - 1])),
+  Command("negative_item", "to go back to path view", [Command.States.dependent_command], [Command.States.s2p_highlighted, Command.States.param_highlighted], lambda: return_to_s2p_tree()),
+  Command("positive_item", "to view path details", [Command.States.s2ps_loaded, Command.States.dependent_command, Command.States.s2p_highlighted], [], lambda: view_path_details()),
+  Command("positive_item", "to select an item", [Command.States.dependent_command, Command.States.param_unselected], [], lambda: add_graph_item(s2ps[view_path].path, S2P.S_PARAMS[cursor_pos - 1])),
+  Command("positive_item", "to go back to path view", [Command.States.dependent_command], [Command.States.s2p_highlighted, Command.States.param_highlighted], lambda: return_to_s2p_tree()),
+  Command("add_all_s", "to select all 'S' items", [Command.States.s2ps_loaded, Command.States.dependent_command, Command.States.s2p_highlighted], [Command.States.s2p_allspaths], lambda: add_graph_item(param_filter="S")),
+  Command("add_all_s", "to remove all 'S' items", [Command.States.s2ps_loaded, Command.States.dependent_command, Command.States.s2p_allspaths], [], lambda: remove_graph_item(param_filter="S")),
+  Command("add_all_i", "to select all 'S' items", [Command.States.s2ps_loaded, Command.States.dependent_command, Command.States.s2p_highlighted], [Command.States.s2p_allipaths], lambda: add_graph_item(param_filter="I")),
+  Command("add_all_i", "to remove all 'S' items", [Command.States.s2ps_loaded, Command.States.dependent_command, Command.States.s2p_allipaths], [], lambda: remove_graph_item(param_filter="I"))
+]
+
+# COMMAND FUNCTIONS
 def load_file() -> None:
   # Loads a file into the list of s2ps
   # Ask user for file
@@ -96,62 +217,89 @@ def load_file() -> None:
       # Update display
       update_visuals()
 
-def generate_graph(delta: bool) -> None:
-  # Display graph of all selected sparams
-    fig = plt.figure()
-    if delta or (settings["plot-options"]["split-by-data-type"] and len([x for x in graph_items if "I" in x[1]]) > 0):
-      ax: Axes = fig.add_subplot(211)
-      de: Axes = fig.add_subplot(212)
-    else:
-      ax: Axes = fig.add_subplot(111)
-    # Graph all items
-    for gi in graph_items:
-      data = get_data(gi)
-      if "I" in gi[1] and settings["plot-options"]["split-by-data-type"]:
-        de.scatter(data[0], data[1], label=gi[0] + " [" + gi[1] + "]", s=settings["plot-options"]["marker-size"])
-      else:
-        ax.scatter(data[0], data[1], label=gi[0] + " [" + gi[1] + "]", s=settings["plot-options"]["marker-size"])
-    
-    # Graph all deltas (if we are in that mode)
-    if delta:
+def get_data(gi: tuple[str, str]) -> tuple[list[float], list[float]]:
+  # Grab the s2p
+  s2p = [x for x in s2ps if x.path == gi[0]][0]
+  # return the data
+  return s2p.get_sparam(gi[1])
 
-      for x in range(len(graph_items)):
-        for y in range(x + 1, len(graph_items)):
+def generate_graph(delta: bool) -> None:
+  # Check that we actually have s2ps loaded
+  if len(s2ps) == 0:
+    return
+  # Create figure
+  fig = plt.figure()
+  # Figure out how many graphs we need
+  num_of_axs = 1
+  if settings["plot_options"]["split_by_data_type"] and len([x for x in graph_items if "I" in x[1]]) > 0: num_of_axs *= 2
+  if delta: num_of_axs *= 2
+  # Create the graph and reference thing
+  axs = [fig.add_subplot(2 if num_of_axs > 1 else 1, 2 if num_of_axs > 2 else 1, i + 1) for i in range(num_of_axs)]
+  los = []
+  los.append("SG" if settings["plot_options"]["split_by_data_type"] and len([x for x in graph_items if "I" in x[1]]) > 0 else "SGIG")
+  if num_of_axs > 1:
+    los.append("IG" if settings["plot_options"]["split_by_data_type"] and len([x for x in graph_items if "I" in x[1]]) > 0 else "SDID")
+  if num_of_axs > 2:
+    los.append("SD")
+    los.append("ID")
+  # Graph all items
+  for gi in graph_items:
+    data = get_data(gi)
+    # Check if this is an I or S value
+    param_type = "S" if "S" in gi[1] else "I"
+    # Loop through all axes and add
+    for ax, lo in zip(axs, los):
+      if param_type + "G" in lo:
+        ax.scatter(data[0], data[1], label=gi[0] + " [" + gi[1] + "]", s=settings["plot_options"]["marker_size"])
+
+  # Graph all deltas (if we are in that mode)
+  if delta:
+    for p in ["S", "I"]:
+      # sort the graph items depending on what we are currently owrking on
+      gis = [x for x in graph_items if p in x[1]]
+      # loop through all combos
+      for x in range(len(gis)):
+        for y in range(x + 1, len(gis)):
           # Create iterators
-          xbd = list(zip(*get_data(graph_items[x])))
+          xbd = list(zip(*get_data(gis[x])))
           xit = peekable(xbd)
-          ybd = list(zip(*get_data(graph_items[y])))
+          ybd = list(zip(*get_data(gis[y])))
           yit = peekable(ybd)
-          # Some vars
-          data = ([], [])
-          # While loop
+          # Some data var
+          data: tuple[list[float], list[float]] = ([], [])
+          # Loop till we run out of items in both lists
           while not(xit.peek(None) == None and yit.peek(None) == None):
-            # If both are equal then add their delta
-            if xit.peek([None])[0] == yit.peek([None])[0]:
+            if xit.peek([inf])[0] == yit.peek([inf])[0]:
+              # x == y
               xd = next(xit)
               yd = next(yit)
               data[0].append(xd[0])
-              data[1].append(xd[1] - yd[1])\
-            # Otherwise get rid of the lower one
-            else:
-              if xit.peek([inf])[0] < yit.peek([inf])[0]:
-                next(xit)
+              # If I and Degree param unit and > 180 then we invert and display
+              if p == "I" and [s for s in s2ps if s.path == gis[x][0]][0].parameter_units != "ri" and yd[1] - xd[1] > 180:
+                data[1].append(yd[1] - xd[1] - 360)
               else:
-                next(yit)
-          de.scatter(data[0], data[1], label="Δ " + graph_items[x][0] + " [" + graph_items[x][1] + "], " + graph_items[y][0] + " [" + graph_items[y][1] + "]", s=settings["plot-options"]["marker-size"])
-    # Add stuff to ax
-    ax.set_xlabel(PLOT_XLABEL.replace("#", FREQ_NAMES[settings["plot-options"]["freq-units"]]))
+                data[1].append(yd[1] - xd[1])
+            elif xit.peek([inf])[0] < yit.peek([inf])[0]:
+              # x < y
+              next(xit)
+            else:
+              # y < x
+              next(yit)
+
+          # Add to the proper plot
+          for ax, lo in zip(axs, los):
+            if p + "D" in lo:
+              ax.scatter(data[0], data[1], label="Δ " + graph_items[x][0] + " [" + graph_items[x][1] + "], " + graph_items[y][0] + " [" + graph_items[y][1] + "]", s=settings["plot_options"]["marker_size"])
+
+  # Add stuff to ax
+  for ax, lo in zip(axs, los):
+    ax.set_title(lo)
+    ax.set_xlabel(PLOT_XLABEL.replace("#", FREQ_NAMES[settings["plot_options"]["freq_units"]]))
     ax.set_ylabel(PARAMETER_LABELS[s2ps[0].parameter_units])
     ax.legend()
 
-    # Add delta stuff if it is enabled
-    if delta or (settings["plot-options"]["split-by-data-type"] and len([x for x in graph_items if "I" in x[1]]) > 0):
-      de.set_xlabel(PLOT_XLABEL.replace("#", FREQ_NAMES[settings["plot-options"]["freq-units"]]))
-      de.set_ylabel(PARAMETER_LABELS[s2ps[0].parameter_units])
-      de.legend()
-
-    # Show plot
-    plt.show()
+  # Show plot
+  plt.show()
 
 def cursor_up() -> None:
   global cursor_pos
@@ -162,6 +310,7 @@ def cursor_up() -> None:
 
 def cursor_down() -> None:
   global cursor_pos, view_path
+  # Check that we actually have s2ps loaded
   if len(s2ps) == 0:
     return
   # Move Cursor Down
@@ -172,42 +321,32 @@ def cursor_down() -> None:
   # redraw
   update_visuals()
 
-def add_graph_item() -> None:
+def add_graph_item(path_filter: str = "", param_filter: str = ""):
   # Check that we actually have s2ps loaded
   if len(s2ps) == 0:
     return
-  # Add a specific item to the list with the path and sparam provided
-  graph_items.append((s2ps[view_path].path, S2P.S_PARAMS[cursor_pos - 1]))
+  # Loop through all the s2ps that match the path filter
+  for s2p in [x for x in s2ps if path_filter in x.path]:
+    # Loop through all the sparams that match the param filter
+    for param in [x for x in S2P.S_PARAMS if param_filter in x]:
+      # prevent duplicates
+      if (s2p.path, param) in graph_items:
+        continue
+      # Add to graph items
+      graph_items.append((s2p.path, param))
   # redraw
   update_visuals()
 
-def add_all_path_items(path: str) -> None:
+def remove_graph_item(path_filter: str = "", param_filter: str = "") -> None:
   # Check that we actually have s2ps loaded
   if len(s2ps) == 0:
     return
-  # Add all items to the graph for the path provided
-  for i in range(len(S2P.S_PARAMS)):
-    if not (path, S2P.S_PARAMS[i]) in graph_items:
-      graph_items.append((path, S2P.S_PARAMS[i]))
-  # redraw
-  update_visuals()
-
-def remove_graph_item() -> None:
-  # Check that we actually have s2ps loaded
-  if len(s2ps) == 0:
-    return
-  # Remove a specific item matching the path and sparam provided
-  graph_items.remove((s2ps[view_path].path, S2P.S_PARAMS[cursor_pos - 1]))
-  # redraw
-  update_visuals()
-
-def remove_all_path_items(path) -> None:
-  global graph_items, view_path
-  # Check that we actually have s2ps loaded
-  if len(s2ps) == 0:
-    return
-  # Remove all items that match with the path provided
-  graph_items = [x for x in graph_items if not x[0] == path]
+  # Loop through all the s2ps that match the path filter
+  for s2p in [x for x in s2ps if path_filter in x.path]:
+    # Loop through all the sparams that match the param filter
+    for param in [x for x in S2P.S_PARAMS if param_filter in x]:
+      # Remove from graph items
+      graph_items.remove((s2p.path, param))
   # redraw
   update_visuals()
 
@@ -229,24 +368,6 @@ def return_to_s2p_tree() -> None:
   view_path = -1
   # redraw
   update_visuals()
-
-COMMANDS = [
-  ["load-keybind", "to load a file", ["common"], load_file],
-  ["graph-keybind", "to view a graph", ["common"], lambda: generate_graph(False)],
-  ["delta-keybind", "to view a graph with deltas", ["common"], lambda: generate_graph(True)],
-  ["cursorup-keybind", "to move cursor up", ["list"], cursor_up],
-  ["cursorup-keybind", "to move cursor up", ["list", "top_slot"], cursor_up],
-  ["cursordown-keybind", "to move cursor down", ["list"], cursor_down],
-  ["cursordown-keybind", "to move cursor down", ["list", "top_slot"], cursor_down],
-  ["negative-item", "to add all items to graph", ["list", "s2p_tree", "unselected"], lambda: add_all_path_items(s2ps[cursor_pos].path)],
-  ["negative-item", "to remove all items from graph", ["list", "s2p_tree", "selected"], lambda: remove_all_path_items(s2ps[cursor_pos].path)],
-  ["negative-item", "to remove item from the graph", ["list", "param_tree", "selected"], remove_graph_item],
-  ["negative-item", "to go back to tree view", ["list", "param_tree", "top_slot"], return_to_s2p_tree],
-  ["positive-item", "to view path details", ["list", "s2p_tree"], view_path_details],
-  ["positive-item", "to add item to the graph", ["list", "param_tree", "unselected"], add_graph_item],
-  ["positive-item", "to go back to tree view", ["list", "param_tree", "top_slot"], return_to_s2p_tree]
-  
-]
 
 def update_visuals() -> None:
   global cursor_pos
@@ -287,60 +408,25 @@ def update_visuals() -> None:
       tree.add(t, style= style)
 
   #Update the subtitle line depending on what is selected
-  subtitle = ", ".join([settings["keybinds"][x[0]].upper() + " " + x[1] for x in get_valid_commands() if not "common" in x[2]])
+  valid_commands = [str(x) for x in commands if x.is_command_valid(Command.States.dependent_command)]
+  subtitle = ", ".join([str(x) for x in commands if x.is_command_valid(Command.States.dependent_command)])
   # Update the UI
   layout["s2p_tree"].update(Panel(tree, title="Loaded S2P Files", subtitle=subtitle))
 
-def get_data(gi) -> tuple[list[float], list[float]]:
-  # Grab the s2p
-  s2p = [x for x in s2ps if x.path == gi[0]][0]
-  # return the data
-  return s2p.get_sparam(gi[1])
-
-def get_valid_commands() -> list:
-  global cursor_pos, graph_items
-  # Get states
-  states = ["common", "list"]
-  # If we are on the top slot, mention that
-  if cursor_pos == 0:
-    states.append("top_slot")
-  # Check if we are looking at the s2p tree or a tree of sparams
-  if view_path == -1:
-    states.append("s2p_tree")
-    # Check the status of our selected item
-    gis = len([x for x in graph_items if x[0] == s2ps[cursor_pos].path])
-    if gis == 0: states.append("unselected")
-    elif gis == len(S2P.S_PARAMS): states.append("selected")
-    else: states.append("partialselected")
-  else:
-    states.append("param_tree")
-    # Check the status of our selected item
-    if (s2ps[view_path].path, S2P.S_PARAMS[cursor_pos - 1]) in graph_items:
-      states.append("selected")
-    else:
-      states.append("unselected")
-  commands = COMMANDS
-  # If not in top slot and not in param tree then strictly sort only commands with top slot
-  if view_path == -1 or cursor_pos != 0:
-    commands = [x for x in COMMANDS if not "top_slot" in x[2]]
-  else:
-    commands = [x for x in COMMANDS if "top_slot" in x[2] or "common" in x[2]]
-  # Filter by states
-  return [x for x in commands if all(item in states for item in x[2])]
+def get_keybind_from_char(char: str) -> str:
+  return [x for x in settings["keybinds"].keys() if settings["keybinds"][x] == char][0]
 
 def parse_input(char: str) -> None:
   
   # ANSI Escape Codes
   if char == chr(0):
     char = ESCAPE_CODE_CONVERSIONS[chr(ord(getch()))]
-  # Filter by state
-  valid_commands = get_valid_commands()
-  # Filter by keybind
-  valid_commands = [x for x in valid_commands if char.lower() == settings["keybinds"][x[0]]]
+  # Filter the valid commands
+  valid_commands = [x for x in commands if x.is_command_executable(get_keybind_from_char(char))]
   # Loop through commands
   for command in valid_commands:
     # Execute
-    command[3]()
+    command.get_funciton()()
   
 # Main Code
 
@@ -356,7 +442,7 @@ with open("settings.yaml", "r", encoding="utf8") as stream:
     quit()
 
 # Dynamically generate the help line
-HELP_LINE = ", ".join([settings["keybinds"][x[0]].upper() + " " + x[1] for x in COMMANDS if "common" in x[2]])
+HELP_LINE = ", ".join([str(x) for x in commands if x.is_command_valid(Command.States.general_command)])
 
 # Create Console + layout
 console = Console()

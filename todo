@@ -1,20 +1,20 @@
 Major - Important
-- make it so if split graphs and delta graphs is enabled we split into 4 (rewrite all the graph  splititng code to make it work better)
 - Add select / deselect all s or i values to be "s" and "i"
 - Convert command "objects" to a class
 
 Minor - Important
-- Get better naming conventions for s and i values
-- Add error messages for loading non s2p files aswell as loading two s2p files with differing parameter units
-- Add suport for default option line values
+- Add error messages for loading two s2p files with differing parameter units
 - view filter
 - move styling options over to the yaml file
+- add exit command
+- add refresh button
 
 Major - UnImportant
-- update the subtitle to show current commands availible to the user dependent on cursor pos and view path
 
 Minor - UnImportant
 - Change the select all feature to be "a"
-- make the left arrow go back when on "Go Back"
 
 BUGSSSS
+- no point in s / i commands after one click
+- y axis labels dont change for i graphs
+- 

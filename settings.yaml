@@ -1,22 +1,22 @@
 # Settings file for S2P_Viewer.py
 # Preset Values
-version: "V0.3 [29 July 2022]"
+version: "V0.4 [5 Aug 2022]"
 
-plot-options:
-  freq-units: "mhz"             # The units displayed in the plots ["hz", "khz", "mhz", "ghz"]
-  split-by-data-type: True      # Split the plot into two seperate graphs, one for the real and one for complex
-  marker-size: 2
+plot_options:
+  freq_units: "mhz"             # The units displayed in the plots ["hz", "khz", "mhz", "ghz"]
+  split_by_data_type: True      # Split the plot into two seperate graphs, one for the real and one for complex
+  marker_size: 2
 
 # All keybinds must be lowercase
 # Use ↑↓←→ for arrow keys
 keybinds:
-  load-keybind: "l"
-  graph-keybind: "g"
-  delta-keybind: "d"
-  add-all: "a"
-  add-all-s: "s"
-  add-all-i: "i"
-  cursorup-keybind: "↑"
-  cursordown-keybind: "↓"
-  negative-item: "←"
-  positive-item: "→"
+  load_keybind: "l"
+  graph_keybind: "g"
+  delta_keybind: "d"
+  add_all: "a"
+  add_all_s: "s"
+  add_all_i: "i"
+  cursorup_keybind: "↑"
+  cursordown_keybind: "↓"
+  negative_item: "←"
+  positive_item: "→"
